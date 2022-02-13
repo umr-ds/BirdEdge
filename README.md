@@ -8,12 +8,12 @@
 - [Jetson Nano Developer Kit SD Card Image](https://developer.nvidia.com/embedded/learn/get-started-jetson-nano-devkit#write)
 - [DeepStream SDK 6.0](https://developer.nvidia.com/deepstream-getting-started)
 
-#### Installation 
+### Installation 
 Run the following command to compile the application:
   * <code>make -j4</code>
 
 
-#### Usage
+### Usage
 
 - Make sure that <code>alsa-device</code> in the configuration file <code>configs/ds_audio_config.txt</code> 
 is correctly set to the connected USB Microphone. The card and device number can be found e.g with <code> arecord -l
