@@ -1,6 +1,7 @@
 #include "Arduino.h"
 #include "driver/i2s.h"
 #include "esp_http_server.h"
+#include "mdns.h"
 #include <WiFi.h>
 #include <sys/socket.h>
 
@@ -16,15 +17,18 @@ static const i2s_port_t i2s_num = I2S_NUM_0;
 
 static const i2s_config_t i2s_config = {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-    .sample_rate = 22050,
+    .sample_rate = 48000,
     .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
     .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
     .communication_format =
         (i2s_comm_format_t)(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
     .intr_alloc_flags = 0,
-    .dma_buf_count = 8,
-    .dma_buf_len = 64,
+    .dma_buf_count = 24, // dma_desc_num
+    .dma_buf_len = 64,   // dma_frame_num
     .use_apll = false};
+
+// adjust to match i2s buffer size
+#define SCRATCH_BUFSIZE (4096)
 
 const i2s_pin_config_t pin_config = {
     .bck_io_num = 14,   // BCKL
@@ -70,8 +74,6 @@ struct streaming_wav_t {
 };
 
 // ### Streaming handling
-#define SCRATCH_BUFSIZE 8192
-
 httpd_handle_t audio_stream_httpd = NULL;
 
 void streaming_wav_destroy(struct streaming_wav_t *wav) { free(wav->buf); }
@@ -135,25 +137,28 @@ static esp_err_t audio_stream_handler(httpd_req_t *req) {
 
     // define buffer for audio data
     size_t chunksize = SCRATCH_BUFSIZE;
+    esp_err_t err = ESP_OK;
 
-    while (true) {
-        i2s_read(i2s_num, wav.buf, SCRATCH_BUFSIZE, &chunksize, portMAX_DELAY);
+    while (ESP_OK == err) {
+        if (ESP_OK != i2s_read(i2s_num, wav.buf, SCRATCH_BUFSIZE, &chunksize,
+                               portMAX_DELAY)) {
+            Serial.printf("%s, i2s_read failed", ipstr);
+            err = ESP_ERR_NOT_FOUND;
+        };
 
-        if (httpd_resp_send_chunk(req, (const char *)wav.buf, chunksize) !=
-            ESP_OK) {
-            Serial.printf("%s, audio stream stopped\n", ipstr);
-            httpd_resp_sendstr_chunk(req, NULL);
+        if (ESP_OK !=
+            httpd_resp_send_chunk(req, (const char *)wav.buf, chunksize)) {
+            Serial.printf("%s, failed to send chunk\n", ipstr);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
-                                "Failed to send file");
-            streaming_wav_destroy(&wav);
-            return ESP_FAIL;
+                                "Failed to send chunk");
+            err = ESP_ERR_INVALID_STATE;
         }
     }
 
     streaming_wav_destroy(&wav);
     httpd_resp_send_chunk(req, NULL, 0);
 
-    return ESP_OK;
+    return err;
 }
 
 // ### Main Setup
@@ -163,8 +168,15 @@ void setup() {
     Serial.begin(115200);
     Serial.setDebugOutput(false);
 
+    // Retrieve hostname
+    char hostname[32];
+    uint64_t chipid = ESP.getEfuseMac();
+    snprintf(hostname, 32, "birdclient-%04x", (uint16_t)(chipid >> 32));
+    printf("Hostname: %s\n", hostname);
+
     // Wi-Fi connection
-    Serial.print("Connecting to Wifi");
+    Serial.print("Wifi: connecting");
+    WiFi.setHostname(hostname);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
     int counter = 0;
@@ -175,12 +187,12 @@ void setup() {
         // If WiFi connection fails, send ESP32 to sleep
         if (10 == counter++) {
             Serial.println("");
-            Serial.println("Could not Connect to Wifi - sleeping...");
+            Serial.println("WiFi: could not connect, sleeping...");
             esp_deep_sleep(10 * 1000);
         }
     }
     Serial.println("");
-    Serial.println("WiFi connected");
+    Serial.println("WiFi: connected");
 
     // install and start i2s driver
     pinMode(22, INPUT);
@@ -189,8 +201,8 @@ void setup() {
     REG_SET_BIT(I2S_CONF_REG(i2s_num), I2S_RX_MSB_SHIFT);
     i2s_set_pin(i2s_num, &pin_config);
 
-    Serial.print("Stream ready at http://");
-    Serial.println(WiFi.localIP());
+    Serial.printf("Stream: ready at http://%s/\n",
+                  WiFi.localIP().toString().c_str());
 
     // start streaming web server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -204,6 +216,14 @@ void setup() {
     if (httpd_start(&audio_stream_httpd, &config) == ESP_OK) {
         httpd_register_uri_handler(audio_stream_httpd, &audio_stream_uri);
     }
+
+    // Initialized mDNS announcement
+    mdns_init();
+    mdns_hostname_set(hostname);
+
+    mdns_service_add(NULL, "_birdedge", "_tcp", 80, NULL, 0);
+    mdns_service_instance_name_set("_birdedge", "_tcp",
+                                   "BirdEdge Client Audio Stream");
 }
 
 // ### main loop unused, because httpd handles the connection
