@@ -222,8 +222,6 @@ void setup() {
     mdns_hostname_set(hostname);
 
     mdns_service_add(NULL, "_birdedge", "_tcp", 80, NULL, 0);
-    mdns_service_instance_name_set("_birdedge", "_tcp",
-                                   "BirdEdge Client Audio Stream");
 }
 
 // ### main loop unused, because httpd handles the connection
