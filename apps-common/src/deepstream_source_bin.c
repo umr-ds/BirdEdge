@@ -1191,6 +1191,16 @@ create_uridecode_src_bin_audio (NvDsSourceConfig * config, NvDsSrcBin * bin)
     goto done;
   }
 
+  bin->audio_cheb_limit = gst_element_factory_make(NVDS_ELEM_AUDIO_LIMIT, "high_pass_filter");
+  g_object_set(G_OBJECT(bin->audio_cheb_limit), "mode", 1, "cutoff", 120.0, NULL);
+
+  bin->audio_converter2 =
+        gst_element_factory_make ("audioconvert", "audio-convert2");
+  if (!bin->audio_converter2) {
+      NVGSTDS_ERR_MSG_V("Could not create 'audioconvert'");
+      goto done;
+ }
+
   bin->audio_resample = gst_element_factory_make (NVDS_ELEM_AUDIO_RESAMPLER, "audioresampler_elem");
   if (!bin->audio_resample) {
     NVGSTDS_ERR_MSG_V ("Could not create element audio_resample");
@@ -1198,11 +1208,11 @@ create_uridecode_src_bin_audio (NvDsSourceConfig * config, NvDsSrcBin * bin)
   }
 
   gst_bin_add_many (GST_BIN (bin->bin), bin->src_elem,
-                    bin->audio_converter, bin->audio_resample, NULL);
+                    bin->audio_converter, bin->audio_cheb_limit, bin->audio_converter2, bin->audio_resample, NULL);
 
   NVGSTDS_BIN_ADD_GHOST_PAD (bin->bin, bin->audio_resample, "src");
 
-  NVGSTDS_LINK_ELEMENT (bin->audio_converter, bin->audio_resample);
+  gst_element_link_many (bin->audio_converter, bin->audio_cheb_limit, bin->audio_converter2, bin->audio_resample, NULL);
 
   ret = TRUE;
 
@@ -1358,7 +1368,7 @@ create_audio_source_bin (NvDsSourceConfig * config, NvDsSrcBin * bin)
 
   GST_CAT_DEBUG (NVDS_APP, "Source bin created");
 
-  return TRUE;
+    return TRUE;
 }
 
 gboolean

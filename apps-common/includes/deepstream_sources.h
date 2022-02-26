@@ -111,7 +111,9 @@ typedef struct
   GstElement *fakesink;
   GstElement *nvvidconv;
   GstElement *audio_converter;
+  GstElement *audio_converter2;
   GstElement *audio_resample;
+  GstElement *audio_cheb_limit;
 
   gboolean do_record;
   guint64 pre_event_rec;

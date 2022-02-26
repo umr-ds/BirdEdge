@@ -56,6 +56,7 @@
 
 #define NVDS_ELEM_VIDEO_CONV "nvvideoconvert"
 #define NVDS_ELEM_AUDIO_CONV "audioconvert"
+#define NVDS_ELEM_AUDIO_LIMIT "audiocheblimit"
 #define NVDS_ELEM_AUDIO_RESAMPLER "audioresample"
 #define NVDS_ELEM_STREAM_MUX "nvstreammux"
 #define NVDS_ELEM_STREAM_DEMUX "nvstreamdemux"
