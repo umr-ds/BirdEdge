@@ -333,7 +333,7 @@ meta_copy_func (gpointer data, gpointer user_data)
  * or can be removed altogether if not required.
  */
 static void
-bbox_generated_probe_after_analytics (AppCtx * appCtx, GstBuffer * buf,
+print_predictions (AppCtx * appCtx, GstBuffer * buf,
                                       NvDsBatchMeta * batch_meta, guint index)
 {
     guint32 stream_id = 0;
@@ -341,8 +341,8 @@ bbox_generated_probe_after_analytics (AppCtx * appCtx, GstBuffer * buf,
     for (NvDsMetaList * l_frame = batch_meta->frame_meta_list; l_frame != NULL;
          l_frame = l_frame->next) {
         NvDsAudioFrameMeta *frame_meta = l_frame->data;
-        g_print ("### label:[%s] source_id:[%d]\n",
-                frame_meta->class_label, frame_meta->source_id);
+        g_print ("### label:[%s] source_id:[%d] confidence:[%f]\n",
+                 frame_meta->class_label, frame_meta->source_id, frame_meta->confidence);
         stream_id = frame_meta->source_id;
         GstClockTime buf_ntp_time = 0;
         if (playback_utc == FALSE) {
@@ -359,36 +359,6 @@ bbox_generated_probe_after_analytics (AppCtx * appCtx, GstBuffer * buf,
             }
             src_stream->last_ntp_time = buf_ntp_time;
         }
-
-            {
-
-                /** Generate NvDsEventMsgMeta for every object */
-                NvDsEventMsgMeta *msg_meta =
-                        (NvDsEventMsgMeta *) g_malloc0 (sizeof (NvDsEventMsgMeta));
-                generate_event_msg_meta (msg_meta, frame_meta->class_id, frame_meta); // FIXME remove useless params
-                testAppCtx->streams[stream_id].meta_number++;
-                NvDsUserMeta *user_event_meta =
-                        nvds_acquire_user_meta_from_pool (batch_meta);
-                if (user_event_meta) {
-                    /*
-                     * Since generated event metadata has custom objects for
-                     * Vehicle / Person which are allocated dynamically, we are
-                     * setting copy and free function to handle those fields when
-                     * metadata copy happens between two components.
-                     */
-                    user_event_meta->user_meta_data = (void *) msg_meta;
-                    user_event_meta->base_meta.batch_meta = batch_meta;
-                    user_event_meta->base_meta.meta_type = NVDS_EVENT_MSG_META;
-                    user_event_meta->base_meta.copy_func =
-                            (NvDsMetaCopyFunc) meta_copy_func;
-                    user_event_meta->base_meta.release_func =
-                            (NvDsMetaReleaseFunc) meta_free_func;
-                    nvds_add_user_meta_to_audio_frame (frame_meta, user_event_meta);
-                } else {
-                    g_print ("Error in attaching event meta to buffer\n");
-                }
-            }
-
         testAppCtx->streams[stream_id].frameCount++;
     }
 }
@@ -458,7 +428,7 @@ main (int argc, char *argv[])
     goto done;
   }
 
-  if (!create_pipeline (appCtx, perf_cb, bbox_generated_probe_after_analytics)) {
+  if (!create_pipeline (appCtx, perf_cb, print_predictions)) {
     NVGSTDS_ERR_MSG_V ("Failed to create pipeline");
     return_value = -1;
     goto done;
@@ -483,7 +453,7 @@ main (int argc, char *argv[])
     return_value = -1;
     goto done;
   }
- 
+
   print_runtime_commands ();
 
   changemode (1);
