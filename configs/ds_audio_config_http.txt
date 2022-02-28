@@ -21,7 +21,7 @@
 ################################################################################
 
 [application]
-enable-perf-measurement=1
+enable-perf-measurement=0
 perf-measurement-interval-sec=5
 
 [source0]

@@ -341,8 +341,22 @@ print_predictions (AppCtx * appCtx, GstBuffer * buf,
     for (NvDsMetaList * l_frame = batch_meta->frame_meta_list; l_frame != NULL;
          l_frame = l_frame->next) {
         NvDsAudioFrameMeta *frame_meta = l_frame->data;
-        g_print ("### label:[%s] source_id:[%d] confidence:[%f]\n",
-                 frame_meta->class_label, frame_meta->source_id, frame_meta->confidence);
+        if (! strcmp (frame_meta->class_label, "00_background")){
+            g_print ("### frame_num:[%d] ntp_timestamp:[%ld] label:[%s] source_id:[%d] confidence:[%f]\n",
+                     frame_meta->frame_num,
+                     frame_meta->ntp_timestamp,
+                     "",
+                     frame_meta->source_id,
+                     0.0);
+
+        }else{
+        g_print ("### frame_num:[%d] ntp_timestamp:[%ld] label:[%s] source_id:[%d] confidence:[%f]\n",
+                 frame_meta->frame_num,
+                 frame_meta->ntp_timestamp,
+                 frame_meta->class_label,
+                 frame_meta->source_id,
+                 frame_meta->confidence);
+        }
         stream_id = frame_meta->source_id;
         GstClockTime buf_ntp_time = 0;
         if (playback_utc == FALSE) {
@@ -454,7 +468,7 @@ main (int argc, char *argv[])
     goto done;
   }
 
-  print_runtime_commands ();
+  // print_runtime_commands ();
 
   changemode (1);
 
