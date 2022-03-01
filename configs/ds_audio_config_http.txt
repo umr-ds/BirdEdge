@@ -32,8 +32,34 @@ num-sources=1
 gpu-id=0
 latency=20
 
+[source1]
+enable=1
+type=7
+uri=http://10.0.1.143/stream.wav
+num-sources=1
+gpu-id=0
+latency=20
+
+
+[source2]
+enable=1
+type=7
+uri=http://10.0.1.233/stream.wav
+num-sources=1
+gpu-id=0
+latency=20
+
+
+[source3]
+enable=1
+type=7
+uri=http://10.0.1.142/stream.wav
+num-sources=1
+gpu-id=0
+latency=20
+
 [streammux]
-batch-size=1
+batch-size=4
 live-source=1
 buffer-pool-size=1024
 
@@ -45,14 +71,13 @@ sync=0
 source-id=0
 gpu-id=0
 nvbuf-memory-type=0
-bitrate=16
 
 
 [audio-classifier]
 enable=1
 gpu-id=0
-model-engine-file=../model/birdmodel.trt
-batch-size=1
+model-engine-file=../model/birdmodel_batchsize_10.trt
+batch-size=10
 nvbuf-memory-type=0
 audio-transform=melsdb,fft_length=1024,hop_size=482,dsp_window=hann,num_mels=128,sample_rate=44100,p2db_ref=(float)1.0,p2db_min_power=(float)0.0,p2db_top_db=(float)80.0
 audio-input-rate=44100
