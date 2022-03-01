@@ -196,19 +196,25 @@ void setup() {
 
     // install and start i2s driver
     pinMode(22, INPUT);
-    i2s_driver_install(i2s_num, &i2s_config, 0, NULL);
+    if (ESP_OK != i2s_driver_install(i2s_num, &i2s_config, 0, NULL)) {
+        Serial.println("I2S: driver install failed, sleeping...");
+        esp_deep_sleep(10 * 1000);
+    }
     REG_SET_BIT(I2S_TIMING_REG(i2s_num), BIT(9));
     REG_SET_BIT(I2S_CONF_REG(i2s_num), I2S_RX_MSB_SHIFT);
-    i2s_set_pin(i2s_num, &pin_config);
+    if (ESP_OK != i2s_set_pin(i2s_num, &pin_config)) {
+        Serial.println("I2S: set pin failed, sleeping...");
+        esp_deep_sleep(10 * 1000);
+    }
 
-    Serial.printf("Stream: ready at http://%s/\n",
+    Serial.printf("Stream: ready at http://%s/stream.wav\n",
                   WiFi.localIP().toString().c_str());
 
     // start streaming web server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 80;
 
-    httpd_uri_t audio_stream_uri = {.uri = "/",
+    httpd_uri_t audio_stream_uri = {.uri = "/stream.wav",
                                     .method = HTTP_GET,
                                     .handler = audio_stream_handler,
                                     .user_ctx = NULL};
