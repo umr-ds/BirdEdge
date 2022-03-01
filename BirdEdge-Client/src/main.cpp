@@ -17,7 +17,7 @@ static const i2s_port_t i2s_num = I2S_NUM_0;
 
 static const i2s_config_t i2s_config = {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-    .sample_rate = 48000,
+    .sample_rate = 44100,
     .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
     .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
     .communication_format =
