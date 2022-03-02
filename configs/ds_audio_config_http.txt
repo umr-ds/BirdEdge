@@ -27,7 +27,7 @@ perf-measurement-interval-sec=5
 [source0]
 enable=1
 type=7
-uri=http://10.0.1.204:80/
+uri=http://10.0.1.204/stream.wav
 num-sources=1
 gpu-id=0
 latency=20

@@ -17,7 +17,7 @@ Run the following command to compile the application:
 - Make sure that <code>alsa-device</code> in the configuration file <code>configs/ds_audio_config.txt</code> 
 is correctly set to the connected USB Microphone. The card and device number can be found e.g with <code> arecord -l
   </code> 
-- Download the [inference model](https://pc12439.mathematik.uni-marburg.de/nextcloud/s/JPLiB2Jp8CJqxgC) and place it in the <code>./model</code> directory.
+- Download the [inference model](https://pc12439.mathematik.uni-marburg.de/nextcloud/s/jfANCLCJR9jNQ8k) and place it in the <code>./model</code> directory.
 - Run the following command to start the pipeline:
   * <code>sudo LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1 birdedge -c configs/ds_audio_config.txt --gst-debug=1</code> 
 - The output format is as follows:
