@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-import configparser
-import subprocess
 import argparse
-import logging
+import configparser
+import io
 import json
+import logging
 import signal
+import subprocess
 import sys
 import time
 import threading
@@ -163,8 +164,10 @@ class BirdEdgeDaemon(ServiceListener):
                 env={"LD_PRELOAD": "/usr/lib/aarch64-linux-gnu/libgomp.so.1"},
             )
 
-            for line in iter(self.process.stdout.readline, b""):
-                line = line[:-1].decode("utf-8")
+            for line in io.TextIOWrapper(self.process.stdout, encoding="utf-8"):
+                line = line[:-1]
+                if len(line) == 0:
+                    continue
 
                 if line.startswith("{"):
                     json_data = json.loads(line)
