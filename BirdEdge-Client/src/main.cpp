@@ -2,6 +2,7 @@
 #include "driver/i2s.h"
 #include "esp_http_server.h"
 #include "mdns.h"
+#include <ESP32Ping.h>
 #include <WiFi.h>
 #include <sys/socket.h>
 
@@ -148,7 +149,7 @@ static esp_err_t audio_stream_handler(httpd_req_t *req) {
 
         if (ESP_OK !=
             httpd_resp_send_chunk(req, (const char *)wav.buf, chunksize)) {
-            Serial.printf("%s, failed to send chunk\n", ipstr);
+            Serial.printf("%s, audio stream stopped\n", ipstr);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                                 "Failed to send chunk");
             err = ESP_ERR_INVALID_STATE;
@@ -231,4 +232,10 @@ void setup() {
 }
 
 // ### main loop unused, because httpd handles the connection
-void loop() {}
+void loop() {
+    while (Ping.ping(WiFi.gatewayIP(), 1)) {
+        delay(1000);
+    }
+    Serial.printf("WiFi: connection lost, restarting...");
+    esp_restart();
+}
