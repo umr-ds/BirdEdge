@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
-import configparser
-import subprocess
 import argparse
-import logging
+import configparser
+import io
 import json
+import logging
 import signal
+import subprocess
+import sys
 import time
 import threading
 
@@ -34,9 +36,7 @@ class BirdEdgeDaemon(ServiceListener):
                  config_path,
                  export_path,
                  restart_interval,
-                 influx_url,
-                 influx_token,
-                 influx_org,
+                 influxc_write,
                  **kwargs,
                  ):
 
@@ -49,8 +49,7 @@ class BirdEdgeDaemon(ServiceListener):
         self.config.read(config_path)
 
         # setup influxdb client
-        self.influxc = InfluxDBClient(url=influx_url, token=influx_token, org=influx_org)
-        self.influxc_write = self.influxc.write_api(write_options=SYNCHRONOUS)
+        self.influxc_write = influxc_write
 
         # set up termination handler
         signal.signal(signal.SIGINT, self.terminate)
@@ -129,14 +128,17 @@ class BirdEdgeDaemon(ServiceListener):
             self.config.write(export_file)
 
     def publish_classification(self, json_data):
-        uri = self.config.get(f"section{json_data['source_id']}", "uri")
+        if json_data["label"] == "":
+            return
+
+        uri = self.config.get(f"source{json_data['source_id']}", "uri")
         station = uri[7:].split(":")[0]
 
         point = {
             "measurement": "birdedge",
             "tags": {
                 "station": station,
-                "label": json_data['label'],
+                "label": json_data["label"].strip(),
             },
             "fields": {
                 "confidence": json_data['confidence'],
@@ -144,7 +146,8 @@ class BirdEdgeDaemon(ServiceListener):
             "time": json_data["timestamp"],
         }
 
-        self.influxc_write.write("birdedge", point)
+        logging.debug("Publishing %s", point)
+        self.influxc_write.write(bucket="radiotracking", record=[point])
 
     def run(self):
         self.running = True
@@ -161,8 +164,10 @@ class BirdEdgeDaemon(ServiceListener):
                 env={"LD_PRELOAD": "/usr/lib/aarch64-linux-gnu/libgomp.so.1"},
             )
 
-            for line in iter(self.process.stdout.readline, b""):
-                line = line[:-1].decode("utf-8")
+            for line in io.TextIOWrapper(self.process.stdout, encoding="utf-8"):
+                line = line[:-1]
+                if len(line) == 0:
+                    continue
 
                 if line.startswith("{"):
                     json_data = json.loads(line)
@@ -206,8 +211,14 @@ if __name__ == "__main__":
     logging_level = logging.WARNING - 10 * args.verbose
     logging.basicConfig(level=logging_level)
 
+    influxc = InfluxDBClient(url=args.influx_url, token=args.influx_token, org=args.influx_org)
+    if not influxc.ping():
+        logging.error("InfluxDB not reachable.")
+        sys.exit(1)
+    influxc_write = influxc.write_api(write_options=SYNCHRONOUS)
+
     logging.info("Starting BirdEdge Daemon")
-    daemon = BirdEdgeDaemon(**args.__dict__)
+    daemon = BirdEdgeDaemon(influxc_write=influxc_write, **args.__dict__)
 
     # allow for 5 seconds for zeroconf to discover services
     time.sleep(5)
