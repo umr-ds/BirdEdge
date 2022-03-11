@@ -124,6 +124,19 @@ class BirdEdgeDaemon(ServiceListener):
 
     def write_config(self):
         logging.debug("Writing config to %s", self.export_path)
+
+        # get number of active streams
+        active_streams = 0
+        for name, section in self.config.items():
+            if name.startswith("source"):
+                if "1" in section.get("enable"):
+                    active_streams += 1
+
+        # adapt batch-sizes
+        self.config.set("streammux", "batch-size", str(active_streams))
+        self.config.set("audio-classifier", "batch-size", str(active_streams))
+
+        # writing config file
         with open(self.export_path, "wt", encoding="utf-8") as export_file:
             self.config.write(export_file)
 
