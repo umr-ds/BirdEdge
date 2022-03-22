@@ -176,7 +176,8 @@ void setup() {
     printf("Hostname: %s\n", hostname);
 
     // Wi-Fi connection
-    Serial.print("Wifi: connecting");
+    Serial.print("Wifi: connecting to SSID ");
+    Serial.print(WIFI_SSID);
     WiFi.setHostname(hostname);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
@@ -186,10 +187,10 @@ void setup() {
         Serial.print(".");
 
         // If WiFi connection fails, send ESP32 to sleep
-        if (10 == counter++) {
+        if (60 == counter++) {
             Serial.println("");
             Serial.println("WiFi: could not connect, sleeping...");
-            esp_deep_sleep(10 * 1000);
+            esp_deep_sleep(10 * 1000 * 1000);
         }
     }
     Serial.println("");
@@ -199,13 +200,13 @@ void setup() {
     pinMode(22, INPUT);
     if (ESP_OK != i2s_driver_install(i2s_num, &i2s_config, 0, NULL)) {
         Serial.println("I2S: driver install failed, sleeping...");
-        esp_deep_sleep(10 * 1000);
+        esp_deep_sleep(10 * 1000 * 1000);
     }
     REG_SET_BIT(I2S_TIMING_REG(i2s_num), BIT(9));
     REG_SET_BIT(I2S_CONF_REG(i2s_num), I2S_RX_MSB_SHIFT);
     if (ESP_OK != i2s_set_pin(i2s_num, &pin_config)) {
         Serial.println("I2S: set pin failed, sleeping...");
-        esp_deep_sleep(10 * 1000);
+        esp_deep_sleep(10 * 1000 * 1000);
     }
 
     Serial.printf("Stream: ready at http://%s/stream.wav\n",
