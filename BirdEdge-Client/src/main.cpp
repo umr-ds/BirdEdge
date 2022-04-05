@@ -6,6 +6,8 @@
 #include <WiFi.h>
 #include <sys/socket.h>
 
+#define BATTERY_PIN A13
+
 #if __has_include("secrets.h")
 #include "secrets.h"
 #else
@@ -34,7 +36,7 @@ static const i2s_config_t i2s_config = {
 const i2s_pin_config_t pin_config = {
     .bck_io_num = 14,   // BCKL
     .ws_io_num = 15,    // LRCL
-    .data_out_num = -1, // not used (only for speakers)
+    .data_out_num = -1, // not used (only for speakmers)
     .data_in_num = 32   // DOUT
 };
 
@@ -162,6 +164,33 @@ static esp_err_t audio_stream_handler(httpd_req_t *req) {
     return err;
 }
 
+static esp_err_t status_handler(httpd_req_t *req) {
+    int sockfd = httpd_req_to_sockfd(req);
+    char ipstr[INET6_ADDRSTRLEN];
+    struct sockaddr_in6 addr;
+    socklen_t addr_size = sizeof(addr);
+
+    // extract remote IP address
+    getpeername(sockfd, (struct sockaddr *)&addr, &addr_size);
+    inet_ntop(AF_INET, &addr.sin6_addr.un.u32_addr[3], ipstr, sizeof(ipstr));
+    Serial.printf("%s, status\n", ipstr);
+
+    // set response header
+    httpd_resp_set_type(req, "application/json");
+
+    uint16_t a13 = analogRead(A13);
+
+    String response = "{";
+    response += "\"ip\": \"" + WiFi.localIP().toString() + "\"";
+    response += ",\"wifi_rssi\": " + String(WiFi.RSSI());
+    response += ",\"uptime\": " + String(millis() / 1000);
+    response += ",\"bat_voltage\": " + String(a13);
+    response += "}\n";
+
+    Serial.printf("%s, %s", ipstr, response.c_str());
+    return httpd_resp_send(req, response.c_str(), response.length());
+}
+
 // ### Main Setup
 
 void setup() {
@@ -220,9 +249,14 @@ void setup() {
                                     .method = HTTP_GET,
                                     .handler = audio_stream_handler,
                                     .user_ctx = NULL};
+    httpd_uri_t status_uri = {.uri = "/status.json",
+                              .method = HTTP_GET,
+                              .handler = status_handler,
+                              .user_ctx = NULL};
 
     if (httpd_start(&audio_stream_httpd, &config) == ESP_OK) {
         httpd_register_uri_handler(audio_stream_httpd, &audio_stream_uri);
+        httpd_register_uri_handler(audio_stream_httpd, &status_uri);
     }
 
     // Initialized mDNS announcement
