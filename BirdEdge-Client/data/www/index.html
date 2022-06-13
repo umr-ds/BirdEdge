@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Bird@Edge Mic</title>
+    <script type="text/javascript" src="birdedge.js"></script>
+    <link rel="stylesheet" type="text/css" href="birdedge.css">
+</head>
+
+<body>
+    <div id="main">
+        <div id="content">
+            <h1>Bird@Edge Mic</h1>
+            <p>This device is part of a distributed Bird@Edge installation. Multiple <i>Bird@Edge Mics</i> stream audio
+                to a respective <i>Bird@EdgeStation</i>, which runs a bird song classification and uploads its data to
+                the cloud. </p>
+            <p>The WebUI you are accessing right now can be used to check the microphone and listen to the stream sent
+                by the Mic.</p>
+
+            <h2>Stream</h2>
+            <audio controls="controls" autoplay="autoplay" preload>
+                <source src="stream.wav" type="audio/wav">
+            </audio>
+
+            <h2>Status</h2>
+            <code id="status">
+            </code>
+
+        </div>
+    </div>
+
+    <footer>
+        <p>Bird@Edge Mic &copy; <a href="https://ds.mathematik.uni-marburg.de/">Distributed Systems Group</a>,
+            University of Marburg</p>
+    </footer>
+</body>
+
+</html>

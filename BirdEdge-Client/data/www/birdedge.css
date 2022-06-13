@@ -1,0 +1,46 @@
+html,
+body {
+    height: 100%;
+}
+
+body {
+    background-color: beige;
+    margin: 0;
+    font-family: sans-serif;
+    color: White;
+    display: flex;
+    flex-direction: column;
+}
+
+#main {
+    flex: 1 0 auto;
+    margin: 30px;
+}
+
+#content {
+    margin: 0 auto;
+    max-width: 740px;
+    background-color: DarkSlateGray;
+    padding: 30px;
+}
+
+audio,
+table,
+code {
+    width: 100%;
+}
+
+th,
+td {
+    padding: 10px;
+}
+
+footer {
+    padding: 0 30px;
+    flex-shrink: 0;
+    background-color: DarkSlateGray;
+}
+
+a {
+    color: Beige;
+}

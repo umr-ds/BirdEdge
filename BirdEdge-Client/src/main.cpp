@@ -1,8 +1,11 @@
 #include "Arduino.h"
+#include "ArduinoJson.h"
+#include "AsyncJson.h"
 #include "driver/i2s.h"
-#include "esp_http_server.h"
 #include "mdns.h"
 #include <ESP32Ping.h>
+#include <ESPAsyncWebServer.h>
+#include <SPIFFS.h>
 #include <WiFi.h>
 #include <sys/socket.h>
 
@@ -16,6 +19,10 @@
 #endif
 
 // ### I2S Config
+#define CHUNKSIZE ((size_t)1024)
+#define QUEUE_SIZE (32)
+QueueHandle_t queue;
+
 static const i2s_port_t i2s_num = I2S_NUM_0;
 
 static const i2s_config_t i2s_config = {
@@ -29,10 +36,6 @@ static const i2s_config_t i2s_config = {
     .dma_buf_len = 1024, // dma_frame_num
     .use_apll = false,
 };
-
-// adjust to match i2s buffer size
-#define SCRATCH_BUFSIZE (4096)
-int16_t scratch_buf[SCRATCH_BUFSIZE];
 
 const i2s_pin_config_t pin_config = {
     .bck_io_num = 14,   // BCKL
@@ -70,126 +73,56 @@ typedef struct {
     chunk_data_t data;
 } wav_header_t;
 
-struct streaming_wav_t {
-    wav_header_t hdr;
-    int16_t *buf;
-    int buf_size;
-    int cnt;
-};
-
 // ### Streaming handling
-httpd_handle_t audio_stream_httpd = NULL;
+AsyncWebServer server(80);
 
-void streaming_wav_destroy(struct streaming_wav_t *wav) { free(wav->buf); }
-
-int streaming_wav_factor(struct streaming_wav_t *wav) {
-    return (wav->hdr.fmt.num_of_channels * wav->hdr.fmt.bits_per_sample / 8);
-}
-
-void streaming_wav_header(struct streaming_wav_t *wav) {
-    wav_header_t *w = (wav_header_t *)&(wav->hdr);
-
+void streaming_wav_header_init(wav_header_t *w) {
     int len = 0xFFFFFFFF;
 
+    // init chunk_riff_t
     w->riff.chunk_id = 0X46464952; // "RIFF"
-    w->riff.format = 0X45564157;   // "WAVE"
-
     w->riff.chunk_size = len;
+    w->riff.format = 0X45564157; // "WAVE"
 
+    // init chunk_fmt_t
     w->fmt.chunk_id = 0X20746D66;
+    w->data.chunk_size = len;
     w->fmt.audio_format = 1;
-    w->fmt.bits_per_sample = i2s_config.bits_per_sample;
     w->fmt.num_of_channels = 1;
-    w->fmt.block_align = w->fmt.num_of_channels * i2s_config.bits_per_sample / 8;
-    w->fmt.byterate = i2s_config.sample_rate * w->fmt.num_of_channels * i2s_config.bits_per_sample / 8;
     w->fmt.chunk_size = 16;
     w->fmt.samplerate = i2s_config.sample_rate;
+    w->fmt.byterate = i2s_config.sample_rate * w->fmt.num_of_channels * i2s_config.bits_per_sample / 8;
+    w->fmt.block_align = w->fmt.num_of_channels * i2s_config.bits_per_sample / 8;
+    w->fmt.bits_per_sample = i2s_config.bits_per_sample;
 
+    // init chunk_data_t
     w->data.chunk_id = 0X61746164;
-    w->data.chunk_size = len;
+    w->fmt.chunk_size = 16;
 }
 
-void streaming_wav_init(struct streaming_wav_t *wav, int buffer_size) {
-    wav->cnt = 0;
-
-    streaming_wav_header(wav);
-
-    // wav->buf = (int16_t *)malloc(buffer_size);
-    wav->buf = scratch_buf;
-    wav->buf_size = buffer_size / streaming_wav_factor(wav);
-}
-
-static esp_err_t audio_stream_handler(httpd_req_t *req) {
-    int sockfd = httpd_req_to_sockfd(req);
-    char ipstr[INET6_ADDRSTRLEN];
-    struct sockaddr_in6 addr;
-    socklen_t addr_size = sizeof(addr);
-
-    // extract remote IP address
-    getpeername(sockfd, (struct sockaddr *)&addr, &addr_size);
-    inet_ntop(AF_INET, &addr.sin6_addr.un.u32_addr[3], ipstr, sizeof(ipstr));
-    Serial.printf("%s, starting audio stream\n", ipstr);
-
-    // set response header
-    httpd_resp_set_type(req, "audio/x-wav");
-
-    // sent wave header
-    streaming_wav_t wav;
-    streaming_wav_init(&wav, SCRATCH_BUFSIZE);
-    httpd_resp_send_chunk(req, (const char *)&(wav.hdr), sizeof(wav.hdr));
-
-    // define buffer for audio data
-    size_t chunksize = SCRATCH_BUFSIZE;
-    esp_err_t err = ESP_OK;
-
-    while (ESP_OK == err) {
-        if (ESP_OK != i2s_read(i2s_num, wav.buf, SCRATCH_BUFSIZE, &chunksize, portMAX_DELAY)) {
-            Serial.printf("%s, i2s_read failed", ipstr);
-            err = ESP_ERR_NOT_FOUND;
-        };
-
-        if (ESP_OK != httpd_resp_send_chunk(req, (const char *)wav.buf, chunksize)) {
-            Serial.printf("%s, audio stream stopped\n", ipstr);
-            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to send chunk");
-            err = ESP_ERR_INVALID_STATE;
-        }
+// Web server
+size_t streaming_wav_get_chunk(uint8_t *buffer, size_t maxLen, size_t index) {
+    // send header for index 0
+    if (index == 0) {
+        Serial.printf("Stream: starting on core %i\n", xPortGetCoreID());
+        streaming_wav_header_init((wav_header_t *)buffer);
+        return sizeof(wav_header_t);
     }
 
-    streaming_wav_destroy(&wav);
-    httpd_resp_send_chunk(req, NULL, 0);
+    size_t chunksize;
+    Serial.printf("reading i2s\n");
 
-    return err;
-}
+    // read data from i2s
+    if (ESP_OK != i2s_read(i2s_num, buffer, maxLen, &chunksize, portMAX_DELAY)) {
+        Serial.printf("i2s_read failed, ending stream.\n");
+        return 0;
+    };
 
-static esp_err_t status_handler(httpd_req_t *req) {
-    int sockfd = httpd_req_to_sockfd(req);
-    char ipstr[INET6_ADDRSTRLEN];
-    struct sockaddr_in6 addr;
-    socklen_t addr_size = sizeof(addr);
-
-    // extract remote IP address
-    getpeername(sockfd, (struct sockaddr *)&addr, &addr_size);
-    inet_ntop(AF_INET, &addr.sin6_addr.un.u32_addr[3], ipstr, sizeof(ipstr));
-    Serial.printf("%s, status\n", ipstr);
-
-    // set response header
-    httpd_resp_set_type(req, "application/json");
-
-    uint16_t a13 = analogRead(A13);
-
-    String response = "{";
-    response += "\"ip\": \"" + WiFi.localIP().toString() + "\"";
-    response += ",\"wifi_rssi\": " + String(WiFi.RSSI());
-    response += ",\"uptime\": " + String(millis() / 1000);
-    response += ",\"bat_voltage\": " + String(a13);
-    response += "}\n";
-
-    Serial.printf("%s, %s", ipstr, response.c_str());
-    return httpd_resp_send(req, response.c_str(), response.length());
+    Serial.printf("sending %i / %i\n", chunksize, maxLen);
+    return chunksize;
 }
 
 // ### Main Setup
-
 void setup() {
     // Enable Serial Debug
     Serial.begin(115200);
@@ -222,8 +155,6 @@ void setup() {
     Serial.println("");
     Serial.println("WiFi: connected");
 
-    // install and start i2s driver
-    pinMode(22, INPUT);
     if (ESP_OK != i2s_driver_install(i2s_num, &i2s_config, 0, NULL)) {
         Serial.println("I2S: driver install failed, sleeping...");
         esp_deep_sleep(10 * 1000 * 1000);
@@ -235,41 +166,46 @@ void setup() {
         esp_deep_sleep(10 * 1000 * 1000);
     }
 
-    Serial.printf("Stream: ready at http://%s/stream.wav\n", WiFi.localIP().toString().c_str());
-
-    // start streaming web server
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 80;
-    config.core_id = 0;
-
-    httpd_uri_t audio_stream_uri = {
-        .uri = "/stream.wav",
-        .method = HTTP_GET,
-        .handler = audio_stream_handler,
-        .user_ctx = NULL,
-    };
-    httpd_uri_t status_uri = {
-        .uri = "/status.json",
-        .method = HTTP_GET,
-        .handler = status_handler,
-        .user_ctx = NULL,
-    };
-
-    if (httpd_start(&audio_stream_httpd, &config) == ESP_OK) {
-        httpd_register_uri_handler(audio_stream_httpd, &audio_stream_uri);
-        httpd_register_uri_handler(audio_stream_httpd, &status_uri);
-    }
-
     // Initialized mDNS announcement
     mdns_init();
     mdns_hostname_set(hostname);
-
     mdns_service_add(NULL, "_birdedge", "_tcp", 80, NULL, 0);
+
+    // Mount SPIFFS
+    SPIFFS.begin();
+
+    // Initalize webserver
+    server.on("/stream.wav", HTTP_GET, [](AsyncWebServerRequest *request) {
+        AsyncWebServerResponse *response = request->beginChunkedResponse("audio/x-wav", streaming_wav_get_chunk);
+        request->send(response);
+    });
+    server.on("/status.json", HTTP_GET, [](AsyncWebServerRequest *request) {
+        AsyncJsonResponse *response = new AsyncJsonResponse();
+        JsonObject root = response->getRoot();
+
+        // fill json
+        root["heap"] = ESP.getFreeHeap();
+        root["ip"] = WiFi.localIP().toString();
+        root["wifi_rssi"] = String(WiFi.RSSI());
+        root["uptime"] = String(millis() / 1000);
+        // analogRead failes due to an unresolved issue in esp32 android:
+        // https://github.com/espressif/arduino-esp32/issues/4782
+        // root["bat_voltage"] = analogRead(BATTERY_PIN);
+
+        // finish response
+        response->setLength();
+        request->send(response);
+    });
+    server.serveStatic("/", SPIFFS, "/www/").setDefaultFile("index.html");
+
+    Serial.printf("Stream: ready at http://%s/stream.wav\n", WiFi.localIP().toString().c_str());
+    server.begin();
 }
 
 // ### main loop unused, because httpd handles the connection
 void loop() {
     while (Ping.ping(WiFi.gatewayIP(), 1)) {
+        Serial.printf("Main loop: core %i\n", xPortGetCoreID());
         delay(1000);
     }
     Serial.printf("WiFi: connection lost, restarting...");
