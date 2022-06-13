@@ -23,15 +23,16 @@ static const i2s_config_t i2s_config = {
     .sample_rate = 44100,
     .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
     .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-    .communication_format =
-        (i2s_comm_format_t)(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
+    .communication_format = I2S_COMM_FORMAT_STAND_MSB,
     .intr_alloc_flags = 0,
-    .dma_buf_count = 24, // dma_desc_num
-    .dma_buf_len = 64,   // dma_frame_num
-    .use_apll = false};
+    .dma_buf_count = 32, // dma_desc_num
+    .dma_buf_len = 1024, // dma_frame_num
+    .use_apll = false,
+};
 
 // adjust to match i2s buffer size
 #define SCRATCH_BUFSIZE (4096)
+int16_t scratch_buf[SCRATCH_BUFSIZE];
 
 const i2s_pin_config_t pin_config = {
     .bck_io_num = 14,   // BCKL
@@ -99,10 +100,8 @@ void streaming_wav_header(struct streaming_wav_t *wav) {
     w->fmt.audio_format = 1;
     w->fmt.bits_per_sample = i2s_config.bits_per_sample;
     w->fmt.num_of_channels = 1;
-    w->fmt.block_align =
-        w->fmt.num_of_channels * i2s_config.bits_per_sample / 8;
-    w->fmt.byterate = i2s_config.sample_rate * w->fmt.num_of_channels *
-                      i2s_config.bits_per_sample / 8;
+    w->fmt.block_align = w->fmt.num_of_channels * i2s_config.bits_per_sample / 8;
+    w->fmt.byterate = i2s_config.sample_rate * w->fmt.num_of_channels * i2s_config.bits_per_sample / 8;
     w->fmt.chunk_size = 16;
     w->fmt.samplerate = i2s_config.sample_rate;
 
@@ -115,7 +114,8 @@ void streaming_wav_init(struct streaming_wav_t *wav, int buffer_size) {
 
     streaming_wav_header(wav);
 
-    wav->buf = (int16_t *)malloc(buffer_size);
+    // wav->buf = (int16_t *)malloc(buffer_size);
+    wav->buf = scratch_buf;
     wav->buf_size = buffer_size / streaming_wav_factor(wav);
 }
 
@@ -143,17 +143,14 @@ static esp_err_t audio_stream_handler(httpd_req_t *req) {
     esp_err_t err = ESP_OK;
 
     while (ESP_OK == err) {
-        if (ESP_OK != i2s_read(i2s_num, wav.buf, SCRATCH_BUFSIZE, &chunksize,
-                               portMAX_DELAY)) {
+        if (ESP_OK != i2s_read(i2s_num, wav.buf, SCRATCH_BUFSIZE, &chunksize, portMAX_DELAY)) {
             Serial.printf("%s, i2s_read failed", ipstr);
             err = ESP_ERR_NOT_FOUND;
         };
 
-        if (ESP_OK !=
-            httpd_resp_send_chunk(req, (const char *)wav.buf, chunksize)) {
+        if (ESP_OK != httpd_resp_send_chunk(req, (const char *)wav.buf, chunksize)) {
             Serial.printf("%s, audio stream stopped\n", ipstr);
-            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
-                                "Failed to send chunk");
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to send chunk");
             err = ESP_ERR_INVALID_STATE;
         }
     }
@@ -238,21 +235,25 @@ void setup() {
         esp_deep_sleep(10 * 1000 * 1000);
     }
 
-    Serial.printf("Stream: ready at http://%s/stream.wav\n",
-                  WiFi.localIP().toString().c_str());
+    Serial.printf("Stream: ready at http://%s/stream.wav\n", WiFi.localIP().toString().c_str());
 
     // start streaming web server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 80;
+    config.core_id = 0;
 
-    httpd_uri_t audio_stream_uri = {.uri = "/stream.wav",
-                                    .method = HTTP_GET,
-                                    .handler = audio_stream_handler,
-                                    .user_ctx = NULL};
-    httpd_uri_t status_uri = {.uri = "/status.json",
-                              .method = HTTP_GET,
-                              .handler = status_handler,
-                              .user_ctx = NULL};
+    httpd_uri_t audio_stream_uri = {
+        .uri = "/stream.wav",
+        .method = HTTP_GET,
+        .handler = audio_stream_handler,
+        .user_ctx = NULL,
+    };
+    httpd_uri_t status_uri = {
+        .uri = "/status.json",
+        .method = HTTP_GET,
+        .handler = status_handler,
+        .user_ctx = NULL,
+    };
 
     if (httpd_start(&audio_stream_httpd, &config) == ESP_OK) {
         httpd_register_uri_handler(audio_stream_httpd, &audio_stream_uri);
