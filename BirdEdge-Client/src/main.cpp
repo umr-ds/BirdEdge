@@ -273,10 +273,18 @@ void setup() {
 // ### main loop unused, because httpd handles the connection
 void loop() {
     while (Ping.ping(WiFi.gatewayIP(), 1)) {
-        digitalWrite(PIN_LED, streaming_in_use());
         Serial.printf("Main: core %i\n", xPortGetCoreID());
-        delay(1000);
+
+        // LED off if stream is running (effectively implements blinking on streaming)
+        digitalWrite(PIN_LED, !streaming_in_use());
+        delay(500);
+
+        // LED on if ESP is on
+        digitalWrite(PIN_LED, 1);
+        delay(500);
     }
+
+    digitalWrite(PIN_LED, 0);
     Serial.printf("WiFi: connection lost, restarting...");
     esp_restart();
 }
