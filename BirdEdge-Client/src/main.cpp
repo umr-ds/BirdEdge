@@ -12,7 +12,8 @@
 #include <WiFi.h>
 #include <sys/socket.h>
 
-#define BATTERY_PIN 35
+#define PIN_BATTERY 35
+#define PIN_LED 13
 
 // variable for adc2 control register, see https://github.com/espressif/arduino-esp32/issues/440#issuecomment-1008165291
 uint32_t adc_register;
@@ -107,6 +108,14 @@ void streaming_wav_header_init(wav_header_t *w) {
     w->fmt.chunk_size = 16;
 }
 
+#define STREAMING_TIMEOUT_MS (1000)
+int last_read = 0;
+
+bool streaming_in_use() {
+    // if last_read was more than timeout ago
+    return (millis() - last_read) < STREAMING_TIMEOUT_MS;
+}
+
 // Web server
 size_t streaming_wav_get_chunk(uint8_t *buffer, size_t maxLen, size_t index) {
     // send header for index 0
@@ -125,6 +134,7 @@ size_t streaming_wav_get_chunk(uint8_t *buffer, size_t maxLen, size_t index) {
     };
 
     Serial.printf("Stream: sending %i (of max %i)\n", chunksize, maxLen);
+    last_read = millis();
     return chunksize;
 }
 
@@ -149,7 +159,7 @@ void setup() {
     printf("Hostname: %s\n", hostname);
 
     // Initialize ADC
-    uint16_t battery = analogRead(BATTERY_PIN);
+    uint16_t battery = analogRead(PIN_BATTERY);
     Serial.printf("Battery: %i\n", battery);
     adc_register = READ_PERI_REG(SENS_SAR_READ_CTRL2_REG);
 
@@ -191,11 +201,21 @@ void setup() {
     mdns_hostname_set(hostname);
     mdns_service_add(NULL, "_birdedge", "_tcp", 80, NULL, 0);
 
+    // Enable LED
+    pinMode(PIN_LED, OUTPUT);
+
     // Mount SPIFFS
     SPIFFS.begin();
 
     // Initalize webserver
     server.on("/stream.wav", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (streaming_in_use()) {
+            AsyncWebServerResponse *response = request->beginResponse(
+                409, "text/plain", "Microphone already in use. Stop other running stream and retry...");
+            request->send(response);
+            return;
+        }
+
         AsyncWebServerResponse *response = request->beginChunkedResponse("audio/x-wav", streaming_wav_get_chunk);
         request->send(response);
     });
@@ -204,11 +224,13 @@ void setup() {
         JsonObject root = response->getRoot();
 
         // fill json
-        root["heap"] = ESP.getFreeHeap();
-        root["ip"] = WiFi.localIP().toString();
-        root["wifi_rssi"] = String(WiFi.RSSI());
-        root["uptime"] = String(millis() / 1000);
         root["hostname"] = hostname;
+        root["ip"] = WiFi.localIP().toString();
+        root["ping"] = Ping.averageTime();
+        root["uptime"] = String(millis() / 1000);
+        root["wifi_rssi"] = String(WiFi.RSSI());
+        root["heap"] = ESP.getFreeHeap();
+        root["streaming"] = streaming_in_use();
 
         // analogRead on ADC2 failes when using WiFi:
         // https://github.com/espressif/arduino-esp32/issues/4782
@@ -218,12 +240,10 @@ void setup() {
         WRITE_PERI_REG(SENS_SAR_READ_CTRL2_REG, adc_register);
         SET_PERI_REG_MASK(SENS_SAR_READ_CTRL2_REG, SENS_SAR2_DATA_INV);
         // read two times and add up, to compensate for the voltage divider and to poor mans average
-        double battery_volage =
-            (analogRead(BATTERY_PIN) + analogRead(BATTERY_PIN) + analogRead(BATTERY_PIN) + analogRead(BATTERY_PIN) +
-             analogRead(BATTERY_PIN) + analogRead(BATTERY_PIN) + analogRead(BATTERY_PIN) + analogRead(BATTERY_PIN)) /
+        root["battery"] =
+            (analogRead(PIN_BATTERY) + analogRead(PIN_BATTERY) + analogRead(PIN_BATTERY) + analogRead(PIN_BATTERY) +
+             analogRead(PIN_BATTERY) + analogRead(PIN_BATTERY) + analogRead(PIN_BATTERY) + analogRead(PIN_BATTERY)) /
             4 / 1000.0;
-
-        root["battery"] = battery_volage;
         WRITE_PERI_REG(SENS_SAR_READ_CTRL2_REG, wifi_register);
 
         size_t json_len = response->setLength();
@@ -253,6 +273,7 @@ void setup() {
 // ### main loop unused, because httpd handles the connection
 void loop() {
     while (Ping.ping(WiFi.gatewayIP(), 1)) {
+        digitalWrite(PIN_LED, streaming_in_use());
         Serial.printf("Main: core %i\n", xPortGetCoreID());
         delay(1000);
     }

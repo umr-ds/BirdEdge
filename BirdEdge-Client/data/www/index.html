@@ -26,21 +26,32 @@
                 <source src="stream.wav" type="audio/wav">
             </audio>
 
-            <h2>Status <button onclick="loadStatus()">Refresh</button></h2>
+            <h2>System Status <button onclick="loadStatus()">Refresh</button></h2>
+            <table>
+            <tr>
+                <th>Uptime (s)</th>
+                <th>Memory (B)</th> 
+                <th>Battery (V)</th> 
+                <th>Streaming</th> 
+            </tr>
+            <tr>
+                <td id="uptime"></td> 
+                <td id="heap"></td>
+                <td id="battery"></td>
+                <td id="streaming"></td>
+            </tr>
+            </table>
+            <h2>Network Status</h2>
             <table>
             <tr>
                 <th>IP</th>
-                <th>Uptime (s)</th>
                 <th>WiFi RSSI (dBm)</th>
-                <th>Memory (B)</th> 
-                <th>Battery (mV)</th> 
+                <th>Ping (ms)</th>
             </tr>
             <tr>
                 <td id="ip"></td>
-                <td id="uptime"></td> 
                 <td id="wifi_rssi"></td>
-                <td id="heap"></td>
-                <td id="battery"></td>
+                <td id="ping"></td>
             </tr>
             </table>
         </div>
