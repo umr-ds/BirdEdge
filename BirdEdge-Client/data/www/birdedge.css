@@ -51,15 +51,21 @@ a {
     color: Beige;
 }
 
-button#restart {
-    float: right;
-    margin: 0;
-    padding: 12px;
+h1, h2{
+    position: relative;
+    overflow: hidden;
 }
 
-button#restart2 {
-    /* float: right; */
+h2 {
+    height: 30px;
 }
+
+h1 button, h2 button {
+    position: absolute;
+    right: 0;
+    height: 100%;
+}
+
 
 #message{
     background-color:lightsalmon;

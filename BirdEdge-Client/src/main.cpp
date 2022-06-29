@@ -1,15 +1,22 @@
 #include "Arduino.h"
 #include "ArduinoJson.h"
 #include "AsyncJson.h"
+#include "driver/adc.h"
 #include "driver/i2s.h"
+#include "esp_adc_cal.h"
 #include "mdns.h"
+#include "soc/sens_reg.h"
 #include <ESP32Ping.h>
 #include <ESPAsyncWebServer.h>
 #include <SPIFFS.h>
 #include <WiFi.h>
 #include <sys/socket.h>
 
-#define BATTERY_PIN A13
+#define BATTERY_PIN 35
+
+// variable for adc2 control register, see https://github.com/espressif/arduino-esp32/issues/440#issuecomment-1008165291
+uint32_t adc_register;
+uint32_t wifi_register;
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -123,7 +130,7 @@ size_t streaming_wav_get_chunk(uint8_t *buffer, size_t maxLen, size_t index) {
 
 void delay_restart(void *parameters) {
     // delay for 3s
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
+    vTaskDelay(pdMS_TO_TICKS(3000));
 
     esp_restart();
 }
@@ -140,6 +147,11 @@ void setup() {
     uint64_t chipid = ESP.getEfuseMac();
     snprintf(hostname, 32, "birdclient-%04x", (uint16_t)(chipid >> 32));
     printf("Hostname: %s\n", hostname);
+
+    // Initialize ADC
+    uint16_t battery = analogRead(BATTERY_PIN);
+    Serial.printf("Battery: %i\n", battery);
+    adc_register = READ_PERI_REG(SENS_SAR_READ_CTRL2_REG);
 
     // Wi-Fi connection
     Serial.print("Wifi: connecting to SSID ");
@@ -161,6 +173,7 @@ void setup() {
     }
     Serial.println("");
     Serial.println("WiFi: connected");
+    wifi_register = READ_PERI_REG(SENS_SAR_READ_CTRL2_REG);
 
     if (ESP_OK != i2s_driver_install(i2s_num, &i2s_config, 0, NULL)) {
         Serial.println("I2S: driver install failed, sleeping...");
@@ -196,9 +209,22 @@ void setup() {
         root["wifi_rssi"] = String(WiFi.RSSI());
         root["uptime"] = String(millis() / 1000);
         root["hostname"] = hostname;
-        // analogRead failes due to an unresolved issue in esp32 android:
+
+        // analogRead on ADC2 failes when using WiFi:
         // https://github.com/espressif/arduino-esp32/issues/4782
-        // root["bat_voltage"] = analogRead(BATTERY_PIN);
+
+        // The workaround used here only works in older versions
+        // https://github.com/espressif/arduino-esp32/issues/102#issuecomment-1008165811
+        WRITE_PERI_REG(SENS_SAR_READ_CTRL2_REG, adc_register);
+        SET_PERI_REG_MASK(SENS_SAR_READ_CTRL2_REG, SENS_SAR2_DATA_INV);
+        // read two times and add up, to compensate for the voltage divider and to poor mans average
+        double battery_volage =
+            (analogRead(BATTERY_PIN) + analogRead(BATTERY_PIN) + analogRead(BATTERY_PIN) + analogRead(BATTERY_PIN) +
+             analogRead(BATTERY_PIN) + analogRead(BATTERY_PIN) + analogRead(BATTERY_PIN) + analogRead(BATTERY_PIN)) /
+            4 / 1000.0;
+
+        root["battery"] = battery_volage;
+        WRITE_PERI_REG(SENS_SAR_READ_CTRL2_REG, wifi_register);
 
         size_t json_len = response->setLength();
 
