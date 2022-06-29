@@ -1,9 +1,10 @@
 function loadStatus() {
     var req = new XMLHttpRequest();
+    req.responseType = 'json';
     req.open('GET', 'status.json', true);
-    req.onreadystatechange = function () {
-        if (req.readyState == 4 && req.status == "200") {
-            document.getElementById("status").innerHTML = req.responseText;
+    req.onload = function () {
+        for (const key in req.response) {
+            document.getElementById(key).innerHTML = req.response[key];
         }
     };
     req.send(null);

@@ -10,27 +10,44 @@
 <body>
     <div id="main">
         <div id="content">
-            <h1>Bird@Edge Mic</h1>
+            <form method="post" action="restart">
+                <h1><span id="hostname">birdclient-0000</span> <button type="submit" id="restart">Restart Device</button></h1>
+            </form>
+            <h5 id="message"></h5>
+
+            <h2>Bird@Edge Mic</h2>
             <p>This device is part of a distributed Bird@Edge installation. Multiple <i>Bird@Edge Mics</i> stream audio
                 to a respective <i>Bird@EdgeStation</i>, which runs a bird song classification and uploads its data to
                 the cloud. </p>
-            <p>The WebUI you are accessing right now can be used to check the microphone and listen to the stream sent
-                by the Mic.</p>
+            <p>The WebUI you are accessing right now can be used to check the microphone and listen to the stream recorded by the Mic.</p>
 
             <h2>Stream</h2>
-            <audio controls="controls" autoplay="autoplay" preload>
+            <audio controls="controls" preload="none">
                 <source src="stream.wav" type="audio/wav">
             </audio>
 
             <h2>Status</h2>
-            <code id="status">
-            </code>
-
+            <table>
+            <tr>
+                <th>IP</th>
+                <th>Uptime (s)</th>
+                <th>WiFi RSSI (dBm)</th>
+                <th>Memory (B)</th> 
+            </tr>
+            <tr>
+                <td id="ip">127.0.0.1</td>
+                <td id="uptime">259</td> 
+                <td id="wifi_rssi">-44</td>
+                <td id="heap">97223</td>
+            </tr>
+            </table>
         </div>
     </div>
 
     <footer>
-        <p>Bird@Edge Mic &copy; <a href="https://ds.mathematik.uni-marburg.de/">Distributed Systems Group</a>,
+        <p><a href="https://github.com/umr-ds/BirdEdge/tree/main/BirdEdge-Client" target="_blank">Bird@Edge Mic</a>
+            &copy;
+            <a href="https://ds.mathematik.uni-marburg.de/"  target="_blank">Distributed Systems Group</a>,
             University of Marburg</p>
     </footer>
 </body>

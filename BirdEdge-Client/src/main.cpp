@@ -110,17 +110,25 @@ size_t streaming_wav_get_chunk(uint8_t *buffer, size_t maxLen, size_t index) {
     }
 
     size_t chunksize;
-    Serial.printf("reading i2s\n");
 
     // read data from i2s
     if (ESP_OK != i2s_read(i2s_num, buffer, maxLen, &chunksize, portMAX_DELAY)) {
-        Serial.printf("i2s_read failed, ending stream.\n");
+        Serial.printf("Stream: i2s_read failed, ending stream.\n");
         return 0;
     };
 
-    Serial.printf("sending %i / %i\n", chunksize, maxLen);
+    Serial.printf("Stream: sending %i (of max %i)\n", chunksize, maxLen);
     return chunksize;
 }
+
+void delay_restart(void *parameters) {
+    // delay for 3s
+    vTaskDelay(3000 / portTICK_PERIOD_MS);
+
+    esp_restart();
+}
+
+char hostname[32];
 
 // ### Main Setup
 void setup() {
@@ -129,7 +137,6 @@ void setup() {
     Serial.setDebugOutput(false);
 
     // Retrieve hostname
-    char hostname[32];
     uint64_t chipid = ESP.getEfuseMac();
     snprintf(hostname, 32, "birdclient-%04x", (uint16_t)(chipid >> 32));
     printf("Hostname: %s\n", hostname);
@@ -188,14 +195,29 @@ void setup() {
         root["ip"] = WiFi.localIP().toString();
         root["wifi_rssi"] = String(WiFi.RSSI());
         root["uptime"] = String(millis() / 1000);
+        root["hostname"] = hostname;
         // analogRead failes due to an unresolved issue in esp32 android:
         // https://github.com/espressif/arduino-esp32/issues/4782
         // root["bat_voltage"] = analogRead(BATTERY_PIN);
 
+        size_t json_len = response->setLength();
+
+        uint8_t buf[512];
+        response->_fillBuffer(buf, sizeof(buf));
+        buf[json_len] = 0;
+        Serial.printf("Status: %s\n", buf);
+
         // finish response
-        response->setLength();
         request->send(response);
     });
+    server.on("/restart", HTTP_POST, [](AsyncWebServerRequest *request) {
+        Serial.println("System: Restarting Bird@Edge Mic...");
+        xTaskCreatePinnedToCore(delay_restart, "RESTART", 2000, NULL, tskIDLE_PRIORITY, NULL, 0);
+
+        request->redirect("/restart.html");
+    });
+
+    // serve static files from www folder
     server.serveStatic("/", SPIFFS, "/www/").setDefaultFile("index.html");
 
     Serial.printf("Stream: ready at http://%s/stream.wav\n", WiFi.localIP().toString().c_str());
@@ -205,7 +227,7 @@ void setup() {
 // ### main loop unused, because httpd handles the connection
 void loop() {
     while (Ping.ping(WiFi.gatewayIP(), 1)) {
-        Serial.printf("Main loop: core %i\n", xPortGetCoreID());
+        Serial.printf("Main: core %i\n", xPortGetCoreID());
         delay(1000);
     }
     Serial.printf("WiFi: connection lost, restarting...");
