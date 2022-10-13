@@ -4,7 +4,16 @@ function loadStatus() {
     req.open('GET', 'status.json', true);
     req.onload = function () {
         for (const key in req.response) {
-            document.getElementById(key).innerHTML = req.response[key];
+            element = document.getElementById(key);
+            if (element.nodeName == "INPUT") {
+                // write value field, if no value is present
+                if (element.value == "") {
+                    element.value = req.response[key];
+                }
+            } else {
+                // write inner HTML else
+                element.innerHTML = req.response[key];
+            }
         }
     };
     req.send(null);

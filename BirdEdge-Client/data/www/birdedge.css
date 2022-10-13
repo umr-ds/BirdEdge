@@ -51,7 +51,8 @@ a {
     color: Beige;
 }
 
-h1, h2{
+h1,
+h2 {
     position: relative;
     overflow: hidden;
 }
@@ -60,19 +61,24 @@ h2 {
     height: 30px;
 }
 
-h1 button, h2 button {
+h1 button,
+h2 button {
     position: absolute;
     right: 0;
     height: 100%;
 }
 
+h2 input {
+    height: 100%;
+}
 
-#message{
-    background-color:lightsalmon;
+
+#message {
+    background-color: lightsalmon;
     color: DarkSlateGray;
     padding: 12px;
 }
 
-#message:empty{
-    display:none;
+#message:empty {
+    display: none;
 }

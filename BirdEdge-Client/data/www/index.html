@@ -26,6 +26,16 @@
                 <source src="stream.wav" type="audio/wav">
             </audio>
 
+            <form action="/wifi" method="post" target="_self"> 
+            <h2>WiFi Configuration <button class="submit">Save</button></h2>
+            <p>A <i>Bird@Edge Mic</i> creates an Access Point to allow for debugging and configuration. To connect to a WiFi, custom credentials can be configured.</p>
+
+                <label for="wifi_ssid">WiFi SSID:</label>
+                <input type="text" id="wifi_ssid" name="wifi_ssid">
+                <label for="wifi_pass">Password:</label>
+                <input type="password" id="wifi_pass" name="wifi_pass">
+            </form>
+
             <h2>System Status <button onclick="loadStatus()">Refresh</button></h2>
             <table>
             <tr>

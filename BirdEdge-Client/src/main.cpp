@@ -4,6 +4,7 @@
 #include "driver/adc.h"
 #include "driver/i2s.h"
 #include "esp_adc_cal.h"
+#include "esp_wifi.h"
 #include "mdns.h"
 #include "soc/sens_reg.h"
 #include <ESP32Ping.h>
@@ -19,12 +20,9 @@
 uint32_t adc_register;
 uint32_t wifi_register;
 
-#if __has_include("secrets.h")
-#include "secrets.h"
-#else
-#define WIFI_SSID "SSID"
-#define WIFI_PASS "PASS"
-#endif
+wifi_config_t wifi_config;
+#define WIFI_SSID "BirdEdge"
+#define WIFI_PASS "BirdsAndBats"
 
 // ### I2S Config
 #define CHUNKSIZE ((size_t)1024)
@@ -164,25 +162,9 @@ void setup() {
     adc_register = READ_PERI_REG(SENS_SAR_READ_CTRL2_REG);
 
     // Wi-Fi connection
-    Serial.print("Wifi: connecting to SSID ");
-    Serial.print(WIFI_SSID);
     WiFi.setHostname(hostname);
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-    int counter = 0;
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-
-        // If WiFi connection fails, send ESP32 to sleep
-        if (60 == counter++) {
-            Serial.println("");
-            Serial.println("WiFi: could not connect, sleeping...");
-            esp_deep_sleep(10 * 1000 * 1000);
-        }
-    }
-    Serial.println("");
-    Serial.println("WiFi: connected");
+    Serial.println("WiFi: creating AccessPoint (1)");
+    WiFi.softAP(hostname);
     wifi_register = READ_PERI_REG(SENS_SAR_READ_CTRL2_REG);
 
     if (ESP_OK != i2s_driver_install(i2s_num, &i2s_config, 0, NULL)) {
@@ -229,6 +211,8 @@ void setup() {
         root["ping"] = Ping.averageTime();
         root["uptime"] = String(millis() / 1000);
         root["wifi_rssi"] = String(WiFi.RSSI());
+        root["wifi_ssid"] = WiFi.SSID();
+        root["wifi_pass"] = WiFi.psk();
         root["heap"] = ESP.getFreeHeap();
         root["streaming"] = streaming_in_use();
 
@@ -262,12 +246,64 @@ void setup() {
 
         request->redirect("/restart.html");
     });
+    server.on("/wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
+        int params = request->params();
+        for (int i = 0; i < params; i++) {
+            AsyncWebParameter *p = request->getParam(i);
+            Serial.printf("POST[%s]: %s\n", p->name().c_str(), p->value().c_str());
+        }
+        AsyncWebParameter *ssid = request->getParam("wifi_ssid", true, false);
+        AsyncWebParameter *pass = request->getParam("wifi_pass", true, false);
+
+        Serial.println("WiFi: Saving WiFi");
+
+        memset(&wifi_config, 0, sizeof(wifi_config_t));
+        strncpy(reinterpret_cast<char *>(wifi_config.sta.ssid), ssid->value().c_str(), 32);
+        strncpy(reinterpret_cast<char *>(wifi_config.sta.password), pass->value().c_str(), 64);
+
+        if (esp_wifi_set_config((wifi_interface_t)ESP_IF_WIFI_STA, &wifi_config) != ESP_OK) {
+            Serial.println("WiFi: Saving WiFi failed...");
+        }
+
+        Serial.println("System: Restarting Bird@Edge Mic...");
+        xTaskCreatePinnedToCore(delay_restart, "RESTART", 2000, NULL, tskIDLE_PRIORITY, NULL, 0);
+
+        request->redirect("/restart.html");
+    });
 
     // serve static files from www folder
     server.serveStatic("/", SPIFFS, "/www/").setDefaultFile("index.html");
-
-    Serial.printf("Stream: ready at http://%s/stream.wav\n", WiFi.localIP().toString().c_str());
     server.begin();
+    Serial.printf("WebUI: ready at http://%s/\n", WiFi.softAPIP().toString().c_str());
+
+    if (esp_wifi_get_config((wifi_interface_t)ESP_IF_WIFI_STA, &wifi_config) != ESP_OK) {
+        Serial.println("WiFi: Getting WiFi default config failed...");
+    }
+
+    // Wi-Fi connection (2): connect to default/configured SSID
+    if (strlen((char *)wifi_config.sta.ssid) == 0) {
+        Serial.printf("WiFi: connecting to default SSID (2) \"%s\"", WIFI_SSID);
+        WiFi.begin(WIFI_SSID, WIFI_PASS);
+    } else {
+        Serial.printf("WiFi: connecting to configured SSID (2) \"%s\"", wifi_config.sta.ssid);
+        WiFi.begin();
+    }
+
+    int counter = 0;
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+
+        if (counter++ >= 60) {
+            Serial.println(" failed.");
+            break;
+        }
+    }
+    Serial.println();
+    Serial.println("WiFi: connected");
+    Serial.printf("WebUI: ready at http://%s/\n", WiFi.localIP().toString().c_str());
+    Serial.printf("Stream: ready at http://%s/stream.wav / http://%s/stream.wav\n", WiFi.localIP().toString().c_str(),
+                  WiFi.softAPIP().toString().c_str());
 }
 
 // ### main loop unused, because httpd handles the connection
@@ -285,6 +321,11 @@ void loop() {
     }
 
     digitalWrite(PIN_LED, 0);
-    Serial.printf("WiFi: connection lost, restarting...");
-    esp_restart();
+    int timeout_s = (5 * 60) - (millis() / 1000);
+    if (timeout_s > 0) {
+        Serial.printf("WiFi: connection lost, remaining in AP mode for %i seconds.\n", timeout_s);
+    } else {
+        Serial.printf("WiFi: connection lost, restarting (%i)...\n", timeout_s);
+        esp_restart();
+    }
 }
