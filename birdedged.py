@@ -7,13 +7,13 @@ import json
 import logging
 import signal
 import subprocess
-import sys
 import time
 import threading
+import csv
+import platform
 
 from zeroconf import ServiceBrowser, Zeroconf, ServiceListener
-from influxdb_client import InfluxDBClient
-from influxdb_client.client.write_api import SYNCHRONOUS
+import paho.mqtt.client
 
 argparser = argparse.ArgumentParser(
     prog='birdedged',
@@ -24,11 +24,66 @@ argparser.add_argument('-c', '--config-path', help='Path to template config.', d
 argparser.add_argument("-v", "--verbose", help="increase output verbosity", action="count", default=0)
 argparser.add_argument("--export-path", help="Path to export the current configuration to.", default='configs/dynamic.conf')
 argparser.add_argument("--restart-interval", help="Minimal time interval between classification process restarts", default=60, type=int)
+argparser.add_argument("--simulate", help="simulate execution using mock data (only for development)", action="store_true")
 
-influx_group = argparser.add_argument_group("InfluxDB")
-influx_group.add_argument("--influx-url", help="InfluxDB url", default='http://localhost:9999')
-influx_group.add_argument("--influx-token", help="InfluxDB token")
-influx_group.add_argument("--influx-org", help="InfluxDB organization", default='default')
+publish_options = argparser.add_argument_group("publish")
+# publish_options.add_argument("--path", help="file output path", default="data", type=str)
+# publish_options.add_argument("--csv", help="enable csv data publishing", action="store_true")
+# publish_options.add_argument("--archive-config", help="archive configuration running birdedge", action="store_true")
+publish_options.add_argument("--mqtt", help="enable mqtt data publishing", action="store_true")
+publish_options.add_argument("--mqtt-host", help="hostname of mqtt broker", default="localhost", type=str)
+publish_options.add_argument("--mqtt-port", help="port of mqtt broker", default=1883, type=int)
+publish_options.add_argument("--mqtt-qos", help="mqtt quality of service level (0, 1, 2)", default=1, type=int)
+publish_options.add_argument("--mqtt-keepalive", help="timeout for mqtt connection (s)", default=3600, type=int)
+publish_options.add_argument("-mv", "--mqtt-verbose", help="increase mqtt logging verbosity", action="count", default=0)
+
+
+class MQTTConsumer(logging.StreamHandler):
+    def __init__(
+        self,
+        mqtt_host: str,
+        mqtt_port: int,
+        mqtt_qos: int,
+        mqtt_keepalive: int,
+        mqtt_verbose: int,
+        prefix: str = "/birdedge",
+        **kwargs,
+    ):
+        logging_level = max(0, logging.WARN - (mqtt_verbose * 10))
+        super(logging.StreamHandler, self).__init__(level=logging_level)
+
+        fmt = logging.Formatter("%(message)s")
+        self.setFormatter(fmt)
+
+        self.prefix = platform.node() + prefix
+        self.mqtt_qos = mqtt_qos
+        self.stream = paho.mqtt.client.Client(f"{platform.node()}-birdedge", clean_session=False)
+        logging.info("Connecting to MQTT node %s:%s", mqtt_host, mqtt_port)
+        self.stream.connect(mqtt_host, mqtt_port, keepalive=mqtt_keepalive)
+        self.stream.loop_start()
+
+    def __del__(self):
+        logging.info("Stopping MQTT thread")
+        self.stream.loop_stop()
+
+    def emit(self, record):
+        path = f"{self.prefix}/log"
+
+        # publish csv
+        csv_io = io.StringIO()
+        csv.writer(csv_io, dialect="excel", delimiter=";").writerow([record.levelname, record.name, self.format(record)])
+        payload_csv = csv_io.getvalue().splitlines()[0]
+        self.stream.publish(path + "/csv", payload_csv, qos=self.mqtt_qos)
+
+    def add(self, signal: list):
+        path = f"{self.prefix}/species"
+
+        # publish csv
+        csv_io = io.StringIO()
+        csv.writer(csv_io, dialect="excel", delimiter=";").writerow(signal)
+        payload_csv = csv_io.getvalue().splitlines()[0]
+        logging.debug("publishing via mqtt (%s B): %s", len(payload_csv), payload_csv)
+        self.stream.publish(path + "/csv", payload_csv, qos=self.mqtt_qos)
 
 
 class BirdEdgeDaemon(ServiceListener):
@@ -36,20 +91,22 @@ class BirdEdgeDaemon(ServiceListener):
                  config_path,
                  export_path,
                  restart_interval,
-                 influxc_write,
+                 simulate: bool,
+                 mqtt_c: MQTTConsumer,
                  **kwargs,
                  ):
 
         self.config_path = config_path
         self.export_path = export_path
         self.restart_interval = restart_interval
+        self.simulate = simulate
 
         # read initial config
         self.config = configparser.ConfigParser()
         self.config.read(config_path)
 
-        # setup influxdb client
-        self.influxc_write = influxc_write
+        # setup mqtt consumer
+        self.mqtt_c = mqtt_c
 
         # set up termination handler
         signal.signal(signal.SIGINT, self.terminate)
@@ -141,26 +198,13 @@ class BirdEdgeDaemon(ServiceListener):
             self.config.write(export_file)
 
     def publish_classification(self, json_data):
-        if json_data["label"] == "":
+        if json_data["label"].strip() in ["", "00_background"]:
             return
 
         uri = self.config.get(f"source{json_data['source_id']}", "uri")
         station = uri[7:].split(":")[0]
 
-        point = {
-            "measurement": "birdedge",
-            "tags": {
-                "station": station,
-                "label": json_data["label"].strip(),
-            },
-            "fields": {
-                "confidence": json_data['confidence'],
-            },
-            "time": json_data["timestamp"],
-        }
-
-        logging.debug("Publishing %s", point)
-        self.influxc_write.write(bucket="radiotracking", record=[point])
+        self.mqtt_c.add([json_data["timestamp"], station, json_data["label"].strip(), json_data['confidence']])
 
     def run(self):
         self.running = True
@@ -170,12 +214,19 @@ class BirdEdgeDaemon(ServiceListener):
             self.last_restart_ts = time.time()
             self.write_config()
 
-            self.process = subprocess.Popen(
-                ["./birdedge", "-c", self.export_path],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                env={"LD_PRELOAD": "/usr/lib/aarch64-linux-gnu/libgomp.so.1"},
-            )
+            if self.simulate:
+                self.process = subprocess.Popen(
+                    ["bash", "-c", "while read -r LINE; do echo \"$LINE\"; sleep $(($RANDOM % 3)); done < misc/birdedge.stdout"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                )
+            else:
+                self.process = subprocess.Popen(
+                    ["./birdedge", "-c", self.export_path],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    env={"LD_PRELOAD": "/usr/lib/aarch64-linux-gnu/libgomp.so.1"},
+                )
 
             for line in io.TextIOWrapper(self.process.stdout, encoding="utf-8"):
                 line = line[:-1]
@@ -224,14 +275,11 @@ if __name__ == "__main__":
     logging_level = logging.WARNING - 10 * args.verbose
     logging.basicConfig(level=logging_level)
 
-    influxc = InfluxDBClient(url=args.influx_url, token=args.influx_token, org=args.influx_org)
-    if not influxc.ping():
-        logging.error("InfluxDB not reachable.")
-        sys.exit(1)
-    influxc_write = influxc.write_api(write_options=SYNCHRONOUS)
+    mqtt_c = MQTTConsumer(**args.__dict__)
+    logging.getLogger().addHandler(mqtt_c)
 
     logging.info("Starting BirdEdge Daemon")
-    daemon = BirdEdgeDaemon(influxc_write=influxc_write, **args.__dict__)
+    daemon = BirdEdgeDaemon(mqtt_c=mqtt_c, **args.__dict__)
 
     # allow for 5 seconds for zeroconf to discover services
     time.sleep(5)

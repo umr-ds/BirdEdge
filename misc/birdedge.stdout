@@ -1,0 +1,36 @@
+max_fps_dur 8.33333e+06 min_fps_dur 2e+08
+INFO: [Implicit Engine Info]: layers num: 2
+0   INPUT  kFLOAT input_1:0       1x456x128       
+1   OUTPUT kFLOAT activation      83              
+
+** INFO: <bus_callback:137>: Pipeline ready
+
+** INFO: <bus_callback:123>: Pipeline running
+
+max_fps_dur 8.33333e+06 min_fps_dur 2e+08
+{"frame_num": 0, "timestamp": 1666269996569432000, "label": "", "source_id": 0, "confidence": 0.000000}
+{"frame_num": 1, "timestamp": 1666269997565818000, "label": " Buntspecht ", "source_id": 0, "confidence": 0.649062}
+{"frame_num": 2, "timestamp": 1666269998585610000, "label": " Buntspecht ", "source_id": 0, "confidence": 0.639357}
+{"frame_num": 3, "timestamp": 1666269999564010000, "label": " Buntspecht ", "source_id": 0, "confidence": 0.628000}
+{"frame_num": 4, "timestamp": 1666270000580608000, "label": " Buntspecht ", "source_id": 0, "confidence": 0.703829}
+{"frame_num": 5, "timestamp": 1666270001558878000, "label": " Grauspecht ", "source_id": 0, "confidence": 0.612320}
+{"frame_num": 6, "timestamp": 1666270002575799000, "label": " Grauspecht ", "source_id": 0, "confidence": 0.730189}
+{"frame_num": 7, "timestamp": 1666270003577484000, "label": " Grauspecht ", "source_id": 0, "confidence": 0.659156}
+{"frame_num": 8, "timestamp": 1666270004573266000, "label": " Grauspecht ", "source_id": 0, "confidence": 0.729195}
+{"frame_num": 9, "timestamp": 1666270005568107000, "label": " Grauspecht ", "source_id": 0, "confidence": 0.719722}
+{"frame_num": 10, "timestamp": 1666270006565865000, "label": "", "source_id": 0, "confidence": 0.000000}
+{"frame_num": 11, "timestamp": 1666270007565743000, "label": "", "source_id": 0, "confidence": 0.000000}
+{"frame_num": 12, "timestamp": 1666270008583186000, "label": "", "source_id": 0, "confidence": 0.000000}
+{"frame_num": 13, "timestamp": 1666270009994212000, "label": "", "source_id": 0, "confidence": 0.000000}
+{"frame_num": 14, "timestamp": 1666270011883936000, "label": "", "source_id": 0, "confidence": 0.000000}
+{"frame_num": 15, "timestamp": 1666270015716345000, "label": " 00_background ", "source_id": 0, "confidence": 0.625463}
+{"frame_num": 16, "timestamp": 1666270017625713000, "label": "", "source_id": 0, "confidence": 0.000000}
+{"frame_num": 17, "timestamp": 1666270021431381000, "label": " 00_background ", "source_id": 0, "confidence": 0.625464}
+{"frame_num": 18, "timestamp": 1666270021490112000, "label": " Schwarzspecht ", "source_id": 0, "confidence": 0.758936}
+{"frame_num": 19, "timestamp": 1666270025270452000, "label": "", "source_id": 0, "confidence": 0.000000}
+{"frame_num": 20, "timestamp": 1666270027182986000, "label": " 00_background ", "source_id": 0, "confidence": 0.625456}
+{"frame_num": 21, "timestamp": 1666270029114508000, "label": "", "source_id": 0, "confidence": 0.000000}
+{"frame_num": 22, "timestamp": 1666270031032305000, "label": "", "source_id": 0, "confidence": 0.000000}
+{"frame_num": 23, "timestamp": 1666270032948590000, "label": "", "source_id": 0, "confidence": 0.000000}
+{"frame_num": 24, "timestamp": 1666270033003280000, "label": "", "source_id": 0, "confidence": 0.000000}
+{"frame_num": 25, "timestamp": 1666270036801999000, "label": "", "source_id": 0, "confidence": 0.000000}
