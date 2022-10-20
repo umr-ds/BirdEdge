@@ -254,7 +254,7 @@ class BirdEdgeDaemon(ServiceListener):
                            for el in line.split(",")}
                     source = self.get_source(err["URL"])
 
-                    logging.error("Disableing source %s", err["URL"])
+                    logging.error("Disabling source %s", err["URL"])
                     self.config.set(source, "enable", "0")
 
                     # restart running classification process

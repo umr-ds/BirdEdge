@@ -3,3 +3,4 @@ birdedge
 model/birdmodel_batchsize_10.trt
 eval/.ipynb_checkpoints
 eval/*.pdf
+configs/dynamic.conf
