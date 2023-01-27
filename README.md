@@ -25,9 +25,7 @@ Run the following command to compile the application:```make -j4```
 
 ## Usage
 
-- Make sure that ```alsa-device``` in the configuration file ```configs/ds_audio_config.txt```
-is correctly set to the connected USB Microphone. The card and device number can be found e.g with ```arecord -l```
-- Download the [inference model](https://pc12439.mathematik.uni-marburg.de/nextcloud/s/jfANCLCJR9jNQ8k) and place it in the ```./model``` directory.
+- Download the [inference model](https://hessenbox.uni-marburg.de/getlink/fi2ctdeqV9y3d16gt4h85W/bird%40edge) and place it in the ```./model``` directory.
 - Set the environment variables:
   * ```LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream-6.0/lib/gst-plugins/```
   * ```LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1```
