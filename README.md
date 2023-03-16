@@ -25,7 +25,7 @@ Run the following command to compile the application:```make -j4```
 
 ## Usage
 
-- Download the [inference model](https://hessenbox.uni-marburg.de/getlink/fi2ctdeqV9y3d16gt4h85W/bird%40edge) and place it in the ```./model``` directory.
+- Download the inference model [`birdmodel_batchsize_10.trt`](https://github.com/umr-ds/BirdEdge/releases/tag/netys-paper) and place it in the ```./model``` directory.
 - Set the environment variables:
   * ```LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream-6.0/lib/gst-plugins/```
   * ```LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1```
